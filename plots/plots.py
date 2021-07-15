@@ -10,21 +10,21 @@ BigGAN_05 = np.array([10.6258, 8.3983, 8.3352, 8.234478, 8.330472]) # 85000
 BigGAN_07 = np.array([8.836767, 8.6992, 8.6248, 8.5837, 8.4033]) # 80000
 BigGAN_09 = np.array([8.0230, 7.9954, 7.9587, 7.9245, 7.7857 ])  # 75000 iteration
 
-BigGAN_line = np.stack((BigGAN_01,BigGAN_03,BigGAN_05,BigGAN_07,BigGAN_09))
+BigGAN_line = np.stack((BigGAN_01[-1],BigGAN_03[-1],BigGAN_05[-1],BigGAN_07[-1],BigGAN_09[-1]))
 
-BigGAN_line_mean = BigGAN_line.mean(axis=1)
-BigGAN_line_std = BigGAN_line.std(axis=1)
+# BigGAN_line_mean = BigGAN_line.mean(axis=1)
+# BigGAN_line_std = BigGAN_line.std(axis=1)
 
 
 
 # neme = ['RN20','RN32','RN44','RN56']
 fig, ax1 = plt.subplots(1, 1, sharex=True, figsize=(6, 6))
-ax1.plot(np.arange(5), BigGAN_line_mean, '-', label='70% sparsity BigGAN', color='orange')
-ax1.fill_between(np.arange(5), BigGAN_line_mean - BigGAN_line_std, BigGAN_line_mean + BigGAN_line_std, alpha=0.2, color='orange')
+ax1.plot(np.arange(5), BigGAN_line, '-', label='70% sparsity BigGAN', color='orange')
+# ax1.fill_between(np.arange(5), BigGAN_line_mean - BigGAN_line_std, BigGAN_line_mean + BigGAN_line_std, alpha=0.2, color='orange')
 # ax1.plot(0.27, acc_rn20_dense_mean, 'o', color='orange', label='RN20_dense')
 ax1.plot(np.arange(5), [9.02]*5, '-', label='dense BigGAN', color='black')
 # ax1.fill_between(np.arange(9),  [acc_rn20_dense_mean-acc_rn20_dense_std]*9, [acc_rn20_dense_mean+acc_rn20_dense_std]*9, alpha=0.2, color='black')
-plt.xticks(np.arange(5), ['ratio=0.1 G_density = 0.06', 'ratio=0.3 G_density = 0.17', 'ratio=0.5 G_density = 0.32','ratio=0.7 G_density = 0.45', 'ratio=0.9 S_G = 0.57',],fontsize=fontsize)
+plt.xticks(np.arange(5), ['ratio=0.1 G_density = 0.06', 'ratio=0.3 G_density = 0.17', 'ratio=0.5 G_density = 0.32','ratio=0.7 G_density = 0.45', 'ratio=0.9 G_density = 0.57',],fontsize=fontsize)
 plt.yticks(fontsize=fontsize)
 plt.xlabel('ratio = #G/#GD, G_density',fontsize=fontsize)
 plt.ylabel('FID',fontsize=fontsize)

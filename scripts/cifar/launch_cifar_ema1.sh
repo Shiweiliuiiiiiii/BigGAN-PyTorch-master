@@ -7,11 +7,11 @@
 #SBATCH --gres=gpu:4           # 占用的GPU卡数 （根据代码要求确定）
 #SBATCH -p gpu4                  # 任务运行所在的分区 (根据代码要求确定，gpu为gpu分区，gpu4为4卡gpu分区，cpu为cpu分区)
 #SBATCH -t 2-00:00:00            # 运行的最长时间 day-hour:minute:second，但是请按需设置，不要浪费过多时间，否则影响系统效率
-#SBATCH -o Biggan_c10_d0.3_ratio0.1       # 打印输出的文件
+#SBATCH -o Biggan_c10_d0.3_ratio0.05       # 打印输出的文件
 source /public/data2/software/software/anaconda3/bin/activate
 conda activate GAN1
 python train.py \
---shuffle --batch_size 50 --parallel --sparse --fix --density 0.3 --ratio_G 0.2 \
+--shuffle --batch_size 50 --parallel --sparse --fix --density 0.3 --ratio_G 0.05 \
 --num_G_accumulations 1 --num_D_accumulations 1 --num_epochs 500 \
 --num_D_steps 4 --G_lr 2e-4 --D_lr 2e-4 \
 --dataset C10 \
