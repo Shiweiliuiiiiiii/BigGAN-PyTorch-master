@@ -132,7 +132,7 @@ def prepare_parser():
     help='Random seed to use; affects both initialization and '
          ' dataloading. (default: %(default)s)')
   parser.add_argument(
-    '--f', type=str, default='ortho',
+    '--G_init', type=str, default='ortho',
     help='Init style to use for G (default: %(default)s)')
   parser.add_argument(
     '--D_init', type=str, default='ortho',
@@ -977,7 +977,7 @@ def name_from_config(config):
   name = '_'.join([
   item for item in [
   'sparse' if config['sparse'] else None,
-  'density%1.1f' % config['density'] if config['sparse'] else None,
+  'density%1.2f' % config['density'] if config['sparse'] else None,
   'ratioG%1.1f' % config['ratio_G'] if config['sparse'] else None,
   'Big%s' % config['which_train_fn'],
   config['dataset'],
