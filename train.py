@@ -12,8 +12,6 @@ import functools
 import math
 import numpy as np
 from tqdm import tqdm, trange
-
-
 import torch
 import torch.nn as nn
 from torch.nn import init
@@ -37,7 +35,6 @@ from sparselearning.core import Masking, CosineDecay, LinearDecay
 # The main training file. Config is a dictionary specifying the configuration
 # of this training run.
 def run(config):
-
   # Update the config dict as necessary
   # This is for convenience, to add settings derived from the user-specified
   # configuration into the config-dict (e.g. inferring the number of classes

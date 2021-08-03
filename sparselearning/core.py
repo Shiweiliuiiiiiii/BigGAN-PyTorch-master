@@ -10,16 +10,26 @@ import math
 
 def add_sparse_args(parser):
     parser.add_argument('--sparse', action='store_true', help='Enable sparse mode. Default: True.')
-    parser.add_argument('--dy_mode', type=str, default='G', help='dynamic change the sparse connectivity of which model')
+    parser.add_argument('--dy_mode', type=str, default='', help='dynamic change the sparse connectivity of which model')
     parser.add_argument('--sparse_init', type=str, default='ERK', help='sparse initialization')
-    parser.add_argument('--growth', type=str, default='random', help='Growth mode. Choose from: momentum, random, random_unfired, and gradient.')
+    parser.add_argument('--G_growth', type=str, default='gradient', help='Growth mode for G. Choose from: momentum, random, random_unfired, and gradient.')
+    parser.add_argument('--D_growth', type=str, default='random', help='Growth mode for D. Choose from: momentum, random, random_unfired, and gradient.')
     parser.add_argument('--death', type=str, default='magnitude', help='Death mode / pruning mode. Choose from: magnitude, SET, threshold.')
     parser.add_argument('--redistribution', type=str, default='none', help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
     parser.add_argument('--death_rate', type=float, default=0.50, help='The pruning rate / death rate.')
     parser.add_argument('--density', type=float, default=0.3, help='The density of the overall sparse network.')
-    parser.add_argument('--update_frequency', type=int, default=100, metavar='N', help='how many iterations to train between parameter exploration')
+    parser.add_argument('--update_frequency', type=int, default=2000, metavar='N', help='how many iterations to train between parameter exploration')
     parser.add_argument('--decay_schedule', type=str, default='cosine', help='The decay schedule for the pruning rate. Default: cosine. Choose from: cosine, linear.')
     parser.add_argument('--ratio_G', type=float, default=0.50, help='The density ratio of G.')
+
+def get_model_params(model):
+    params = {}
+    for name in model.state_dict():
+        params[name] = copy.deepcopy(model.state_dict()[name])
+    return params
+
+def set_model_params(model, model_parameters):
+    model.load_state_dict(model_parameters)
 
 class CosineDecay(object):
     def __init__(self, death_rate, T_max, eta_min=0.005, last_epoch=-1):
@@ -49,14 +59,18 @@ class LinearDecay(object):
 
 
 class Masking(object):
-    def __init__(self, G_optimizer=False, D_optimizer=False,  death_rate_decay=False, death_rate=0.3, death='magnitude', growth='momentum', redistribution='momentum', **config):
+    def __init__(self, G_optimizer=False, D_optimizer=False,  death_rate_decay=False, death_rate=0.3, death='magnitude', G_growth='gradient', D_growth='random', redistribution='momentum', **config):
         growth_modes = ['random', 'momentum', 'momentum_neuron', 'gradient']
-        if growth not in growth_modes:
-            print('Growth mode: {0} not supported!'.format(growth))
+        if G_growth not in growth_modes:
+            print('G_Growth mode: {0} not supported!'.format(G_growth))
+            print('Supported modes are:', str(growth_modes))
+        if D_growth not in growth_modes:
+            print('D_Growth mode: {0} not supported!'.format(D_growth))
             print('Supported modes are:', str(growth_modes))
 
         self.device = torch.device("cuda")
-        self.growth_mode = growth
+        self.G_growth_mode = G_growth
+        self.D_growth_mode = D_growth
         self.death_mode = death
         self.redistribution_mode = redistribution
         self.death_rate_decay = death_rate_decay
@@ -83,7 +97,7 @@ class Masking(object):
 
 
         # if fix, we do not explore the sparse connectivity
-        if self.dy_mode: self.prune_every_k_steps = None
+        if not self.dy_mode: self.prune_every_k_steps = None
         else: self.prune_every_k_steps = config['update_frequency']
 
     def init(self, mode='ERK', density=0.05, ratio_G=0.5, erk_power_scale=1.0):
@@ -122,7 +136,11 @@ class Masking(object):
             self.ERK_initialize_D(erk_power_scale)
 
         self.apply_mask(apply_mode='GD')
-        # self.fired_masks = copy.deepcopy(self.masks) # used for ITOP
+        self.G_fired_masks = copy.deepcopy(self.G_masks) # used for ITOP
+        self.D_fired_masks = copy.deepcopy(self.D_masks) # used for ITOP
+
+        for name, tensor in self.G_model.named_parameters():
+            print(name, (tensor!=0).sum().item()/tensor.numel())
 
         G_total_size = 0
         G_sparse_size = 0
@@ -140,6 +158,7 @@ class Masking(object):
         print('Total Model parameters of D:', D_total_size)
         print('Total parameters under sparsity level of {0}: {1}'.format(self.D_density, D_sparse_size / D_total_size))
 
+
     def step(self, explore_mode='GD'):
         if 'G' in explore_mode:
             self.G_optimizer.step()
@@ -154,10 +173,10 @@ class Masking(object):
             self.apply_mask(apply_mode='D')
 
         if self.prune_every_k_steps is not None:
-            if self.steps % self.prune_every_k_steps == 0:
+            if self.steps % self.prune_every_k_steps == 0 and self.steps > 0 and 'G' in explore_mode:
                 self.truncate_weights(dy_mode=self.dy_mode)
-                self.print_nonzero_counts()
-
+                self.print_nonzero_counts(dy_mode=self.dy_mode)
+                self.fired_masks_update()
 
     def add_module(self, G_model, D_model, ratio_G=0.5 , density=0.5, sparse_init='ERK'):
         self.G_model = G_model
@@ -242,23 +261,22 @@ class Masking(object):
 
     def apply_mask(self, apply_mode='GD'):
         if 'G' in apply_mode:
-            for name, tensor in self.G_model.named_parameters():
+            model_para = get_model_params(self.G_model)
+            for name in model_para:
                 if name in self.G_masks:
-                    with torch.no_grad():
-                        tensor = tensor*self.G_masks[name]
-                        if 'exp_avg' in self.G_optimizer.state[tensor]:
-                            self.G_optimizer.state[tensor]['exp_avg'] = self.G_optimizer.state[tensor]['exp_avg']*self.G_masks[name]
-                            self.G_optimizer.state[tensor]['exp_avg_sq'] = self.G_optimizer.state[tensor]['exp_avg_sq']*self.G_masks[name]
+                    model_para[name] = model_para[name]*self.G_masks[name]
+            set_model_params(self.G_model, model_para)
+
         if 'D' in apply_mode:
-            for name, tensor in self.D_model.named_parameters():
+            model_para = get_model_params(self.D_model)
+            for name in model_para:
                 if name in self.D_masks:
-                    with torch.no_grad():
-                        tensor = tensor*self.D_masks[name]
-                        if 'exp_avg' in self.D_optimizer.state[tensor]:
-                            self.D_optimizer.state[tensor]['exp_avg'] = self.D_optimizer.state[tensor]['exp_avg']*self.D_masks[name]
-                            self.D_optimizer.state[tensor]['exp_avg_sq'] = self.D_optimizer.state[tensor]['exp_avg_sq']*self.D_masks[name]
+                    model_para[name] = model_para[name] * self.D_masks[name]
+            set_model_params(self.D_model, model_para)
 
     def truncate_weights(self, dy_mode):
+        print(f"perform weight exploration for{dy_mode}")
+
         # update G
         if 'G' in dy_mode:
             # prune
@@ -266,8 +284,8 @@ class Masking(object):
                 if name not in self.G_masks: continue
                 mask = self.G_masks[name]
                 self.G_name2nonzeros[name] = mask.sum().item()
-                self.G_name2nonzeros[name] = mask.numel() - self.G_name2nonzeros[name]
-                new_mask = self.magnitude_death(mask, weight, name)
+                self.G_name2zeros[name] = mask.numel() - self.G_name2nonzeros[name]
+                new_mask = self.magnitude_death(mask, weight, name, self.G_name2nonzeros[name], self.G_name2zeros[name])
                 self.G_masks[name][:] = new_mask
             # grow
             for name, weight in self.G_model.named_parameters():
@@ -276,16 +294,16 @@ class Masking(object):
                 num_remove = int(self.G_name2nonzeros[name] - new_mask.sum().item())
 
                 # growth
-                if self.growth_mode == 'random':
+                if self.G_growth_mode == 'random':
                     new_mask = self.random_growth(name, new_mask, weight, num_remove)
 
-                if self.growth_mode == 'random_unfired':
+                if self.G_growth_mode == 'random_unfired':
                     new_mask = self.random_unfired_growth(name, new_mask, weight, num_remove)
 
-                elif self.growth_mode == 'momentum':
+                elif self.G_growth_mode == 'momentum':
                     new_mask = self.momentum_growth(name, new_mask, weight, num_remove)
 
-                elif self.growth_mode == 'gradient':
+                elif self.G_growth_mode == 'gradient':
                     new_mask = self.gradient_growth(name, new_mask, weight, num_remove)
 
                 # exchanging masks
@@ -299,8 +317,8 @@ class Masking(object):
                 if name not in self.D_masks: continue
                 mask = self.D_masks[name]
                 self.D_name2nonzeros[name] = mask.sum().item()
-                self.D_name2nonzeros[name] = mask.numel() - self.D_name2nonzeros[name]
-                new_mask = self.magnitude_death(mask, weight, name)
+                self.D_name2zeros[name] = mask.numel() - self.D_name2nonzeros[name]
+                new_mask = self.magnitude_death(mask, weight, name, self.D_name2nonzeros[name], self.D_name2zeros[name])
                 self.D_masks[name][:] = new_mask
             # grow
             for name, weight in self.D_model.named_parameters():
@@ -309,16 +327,16 @@ class Masking(object):
                 num_remove = int(self.D_name2nonzeros[name] - new_mask.sum().item())
 
                 # growth
-                if self.growth_mode == 'random':
+                if self.D_growth_mode == 'random':
                     new_mask = self.random_growth(name, new_mask, weight, num_remove)
 
-                if self.growth_mode == 'random_unfired':
+                if self.D_growth_mode == 'random_unfired':
                     new_mask = self.random_unfired_growth(name, new_mask, weight, num_remove)
 
-                elif self.growth_mode == 'momentum':
+                elif self.D_growth_mode == 'momentum':
                     new_mask = self.momentum_growth(name, new_mask, weight, num_remove)
 
-                elif self.growth_mode == 'gradient':
+                elif self.D_growth_mode == 'gradient':
                     new_mask = self.gradient_growth(name, new_mask, weight, num_remove)
 
                 # exchanging masks
@@ -326,11 +344,9 @@ class Masking(object):
                 self.D_masks[name] = new_mask.float()
 
         self.apply_mask(apply_mode='GD')
-
     '''
                     DEATH
     '''
-
     def threshold_death(self, mask, weight, name):
         return (torch.abs(weight.data) > self.threshold)
 
@@ -345,16 +361,15 @@ class Masking(object):
 
         return mask
 
-    def magnitude_death(self, mask, weight, name):
+    def magnitude_death(self, mask, weight, name, num_nonzero, num_zero):
 
-        num_remove = math.ceil(self.death_rate*self.name2nonzeros[name])
+        num_remove = math.ceil(self.death_rate*num_nonzero)
         if num_remove == 0.0: return weight.data != 0.0
-        num_zeros = self.name2zeros[name]
 
         x, idx = torch.sort(torch.abs(weight.data.view(-1)))
         n = idx.shape[0]
 
-        k = math.ceil(num_zeros + num_remove)
+        k = math.ceil(num_zero + num_remove)
         threshold = x[k-1].item()
 
         return (torch.abs(weight.data) > threshold)
@@ -418,7 +433,7 @@ class Masking(object):
         if n == 0: return new_mask
         expeced_growth_probability = (num_remove/n)
         new_weights = torch.rand(new_mask.shape).cuda() < expeced_growth_probability
-        new_mask_ = new_mask.byte() | new_weights
+        new_mask_ = new_mask.bool() | new_weights
         if (new_mask_!=0).sum().item() == 0:
             new_mask_ = new_mask
         return new_mask_
@@ -473,6 +488,7 @@ class Masking(object):
     '''
                 UTILITY
     '''
+
     def get_momentum_for_weight(self, weight):
         if 'exp_avg' in self.optimizer.state[weight]:
             adam_m1 = self.optimizer.state[weight]['exp_avg']
@@ -486,30 +502,51 @@ class Masking(object):
         grad = weight.grad.clone()
         return grad
 
-    def print_nonzero_counts(self):
-        for name, tensor in self.G_model.named_parameters():
-            if name not in self.G_masks: continue
-            mask = self.G_masks[name]
-            num_nonzeros = (mask != 0).sum().item()
-            val = '{0}: {1}->{2}, density: {3:.3f}'.format(name, self.G_name2nonzeros[name], num_nonzeros, num_nonzeros/float(mask.numel()))
-            print(val)
+    def print_nonzero_counts(self, dy_mode):
+        if 'G' in dy_mode:
+            for name, tensor in self.G_model.named_parameters():
+                if name not in self.G_masks: continue
+                mask = self.G_masks[name]
+                num_nonzeros = (mask != 0).sum().item()
+                val = '{0}: {1}->{2}, density: {3:.3f}'.format(name, self.G_name2nonzeros[name], num_nonzeros, num_nonzeros/float(mask.numel()))
+                print(val)
+
+        if 'D' in dy_mode:
+            for name, tensor in self.D_model.named_parameters():
+                if name not in self.D_masks: continue
+                mask = self.D_masks[name]
+                num_nonzeros = (mask != 0).sum().item()
+                val = '{0}: {1}->{2}, density: {3:.3f}'.format(name, self.D_name2nonzeros[name], num_nonzeros, num_nonzeros/float(mask.numel()))
+                print(val)
         print('Death rate: {0}\n'.format(self.death_rate))
 
     def fired_masks_update(self):
-        ntotal_fired_weights = 0.0
-        ntotal_weights = 0.0
-        layer_fired_weights = {}
-        for module in self.modules:
-            for name, weight in module.named_parameters():
-                if name not in self.masks: continue
-                self.fired_masks[name] = self.masks[name].data.byte() | self.fired_masks[name].data.byte()
-                ntotal_fired_weights += float(self.fired_masks[name].sum().item())
-                ntotal_weights += float(self.fired_masks[name].numel())
-                layer_fired_weights[name] = float(self.fired_masks[name].sum().item())/float(self.fired_masks[name].numel())
-                print('Layerwise percentage of the fired weights of', name, 'is:', layer_fired_weights[name])
-        total_fired_weights = ntotal_fired_weights/ntotal_weights
-        print('The percentage of the total fired weights is:', total_fired_weights)
-        return layer_fired_weights, total_fired_weights
+        G_ntotal_fired_weights = 0.0
+        G_ntotal_weights = 0.0
+        G_layer_fired_weights = {}
+        for name, weight in self.G_model.named_parameters():
+            if name not in self.G_masks: continue
+            self.G_fired_masks[name] = self.G_masks[name].data.byte() | self.G_fired_masks[name].data.byte()
+            G_ntotal_fired_weights += float(self.G_fired_masks[name].sum().item())
+            G_ntotal_weights += float(self.G_fired_masks[name].numel())
+            G_layer_fired_weights[name] = float(self.G_fired_masks[name].sum().item())/float(self.G_fired_masks[name].numel())
+            print('Layerwise percentage of the fired weights of', name, 'is:', G_layer_fired_weights[name])
+        G_total_fired_weights = G_ntotal_fired_weights/G_ntotal_weights
+        print('The percentage of the total fired weights of G is:', G_total_fired_weights)
+
+        D_ntotal_fired_weights = 0.0
+        D_ntotal_weights = 0.0
+        D_layer_fired_weights = {}
+        for name, weight in self.D_model.named_parameters():
+            if name not in self.D_masks: continue
+            self.D_fired_masks[name] = self.D_masks[name].data.byte() | self.D_fired_masks[name].data.byte()
+            D_ntotal_fired_weights += float(self.D_fired_masks[name].sum().item())
+            D_ntotal_weights += float(self.D_fired_masks[name].numel())
+            D_layer_fired_weights[name] = float(self.D_fired_masks[name].sum().item())/float(self.D_fired_masks[name].numel())
+            print('Layerwise percentage of the fired weights of', name, 'is:', D_layer_fired_weights[name])
+        D_total_fired_weights = D_ntotal_fired_weights/D_ntotal_weights
+        print('The percentage of the total fired weights of D is:', D_total_fired_weights)
+
 
     def ERK_initialize_G(self, erk_power_scale):
         total_params = 0
@@ -626,3 +663,4 @@ class Masking(object):
 
             total_nonzero += density_dict[name] * mask.numel()
         print(f"Overall sparsity of D {total_nonzero / total_params}")
+

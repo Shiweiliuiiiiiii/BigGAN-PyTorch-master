@@ -77,7 +77,12 @@ def run(config):
   z_, y_ = utils.prepare_z_y(G_batch_size, G.dim_z, config['n_classes'],
                              device=device, fp16=config['G_fp16'], 
                              z_var=config['z_var'])
-  
+
+  for name, weight in G.named_parameters():
+      print(name)
+      print((weight!=0).sum().item()/weight.numel())
+
+
   if config['G_eval_mode']:
     print('Putting G in eval mode..')
     G.eval()
@@ -90,8 +95,7 @@ def run(config):
     print('Accumulating standing stats across %d accumulations...' % config['num_standing_accumulations'])
     utils.accumulate_standing_stats(G, z_, y_, config['n_classes'],
                                     config['num_standing_accumulations'])
-    
-  
+
   # Sample a number of images and save them to an NPZ, for use with TF-Inception
   if config['sample_npz']:
     # Lists to hold images and labels for images

@@ -281,7 +281,7 @@ def prepare_inception_metrics(dataset, parallel, no_fid=False):
   # Load network
   net = load_inception_net(parallel)
   def get_inception_metrics(sample, num_inception_images, num_splits=10, 
-                            prints=True, use_torch=True):
+                            prints=True, use_torch=False):
     if prints:
       print('Gathering activations...')
     pool, logits, labels = accumulate_inception_activations(sample, net, num_inception_images)
@@ -303,7 +303,7 @@ def prepare_inception_metrics(dataset, parallel, no_fid=False):
         FID = torch_calculate_frechet_distance(mu, sigma, torch.tensor(data_mu).float().cuda(), torch.tensor(data_sigma).float().cuda())
         FID = float(FID.cpu().numpy())
       else:
-        FID = numpy_calculate_frechet_distance(mu, sigma.cpu().numpy(), data_mu, data_sigma)
+        FID = numpy_calculate_frechet_distance(mu, sigma, data_mu, data_sigma)
     # Delete mu, sigma, pool, logits, and labels, just in case
     del mu, sigma, pool, logits, labels
     return IS_mean, IS_std, FID

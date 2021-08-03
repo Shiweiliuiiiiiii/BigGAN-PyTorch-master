@@ -17,7 +17,8 @@ import json
 import pickle
 from argparse import ArgumentParser
 import animal_hash
-
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -585,9 +586,13 @@ def get_data_loaders(dataset, data_root=None, augment=False, batch_size=64,
 
 # Utility file to seed rngs
 def seed_rng(seed):
+  torch.backends.cudnn.benchmark = False
+  torch.backends.cudnn.deterministic = True
+
+  random.seed(seed)
+  np.random.seed(seed)
   torch.manual_seed(seed)
   torch.cuda.manual_seed(seed)
-  np.random.seed(seed)
 
 
 # Utility to peg all roots to a base root
@@ -977,8 +982,11 @@ def name_from_config(config):
   name = '_'.join([
   item for item in [
   'sparse' if config['sparse'] else None,
-  'density%1.2f' % config['density'] if config['sparse'] else None,
-  'ratioG%1.1f' % config['ratio_G'] if config['sparse'] else None,
+  'density%1.4f' % config['density'] if config['sparse'] else None,
+  'ratioG%1.4f' % config['ratio_G'] if config['sparse'] else None,
+  'dy_%s' % config['dy_mode'] if config['dy_mode'] else None,
+  'D_growth_%s' % config['D_growth'] if config['dy_mode'] else None,
+  'G_growth_%s' % config['G_growth'] if config['dy_mode'] else None,
   'Big%s' % config['which_train_fn'],
   config['dataset'],
   config['model'] if config['model'] != 'BigGAN' else None,
