@@ -982,11 +982,13 @@ def name_from_config(config):
   name = '_'.join([
   item for item in [
   'sparse' if config['sparse'] else None,
+  'balanced' if config['balanced'] else 'unbalanced',
   'density%1.4f' % config['density'] if config['sparse'] else None,
-  'ratioG%1.4f' % config['ratio_G'] if config['sparse'] else None,
+  'densityG_%1.4f' % config['densityG'] if config['sparse'] else None,
   'dy_%s' % config['dy_mode'] if config['dy_mode'] else None,
   'D_growth_%s' % config['D_growth'] if config['dy_mode'] else None,
   'G_growth_%s' % config['G_growth'] if config['dy_mode'] else None,
+  'fre_%d' % config['update_frequency'] if config['dy_mode'] else None,
   'Big%s' % config['which_train_fn'],
   config['dataset'],
   config['model'] if config['model'] != 'BigGAN' else None,

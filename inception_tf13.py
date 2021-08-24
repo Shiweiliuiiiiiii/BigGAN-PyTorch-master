@@ -300,7 +300,8 @@ def run(config):
   inc_mean, inc_std = get_inception_score(list(ims.swapaxes(1,2).swapaxes(2,3)), splits=10)
   t1 = time.time()
   # Load statistic files of real images
-  fname = './fid_stat/fid_stats_cifar10_train.npz'
+  fname = './fid_stats/fid_stats_cifar10_train.npz'
+  print('f{loadding fid_stat successfully}')
   real_stat = np.load(fname)
   with tf.Session(config=config_tf) as sess:
     gen_mu, gen_sigma =  calculate_activation_statistics(ims.swapaxes(1,2).swapaxes(2,3), sess, batch_size=50, verbose=False)
