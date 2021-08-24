@@ -20,7 +20,9 @@ def add_sparse_args(parser):
     parser.add_argument('--density', type=float, default=0.3, help='The density of the overall sparse network.')
     parser.add_argument('--update_frequency', type=int, default=2000, metavar='N', help='how many iterations to train between parameter exploration')
     parser.add_argument('--decay_schedule', type=str, default='cosine', help='The decay schedule for the pruning rate. Default: cosine. Choose from: cosine, linear.')
-    parser.add_argument('--ratio_G', type=float, default=0.50, help='The density ratio of G.')
+    parser.add_argument('--densityG', type=float, default=0.05, help='The density ratio of G.')
+    parser.add_argument('--balanced', action='store_true', help='Enable balanced training mode. Default: True.')
+    parser.add_argument('--pruning_rate', type=float, default=None, help='Pruning rate')
 
 def get_model_params(model):
     params = {}
@@ -84,7 +86,7 @@ class Masking(object):
         self.G_optimizer = G_optimizer
         self.D_optimizer = D_optimizer
         self.dy_mode = config['dy_mode']
-
+        self.balance = config['balanced']
         # stats
         self.G_name2zeros = {}
         self.G_num_remove = {}
@@ -100,7 +102,7 @@ class Masking(object):
         if not self.dy_mode: self.prune_every_k_steps = None
         else: self.prune_every_k_steps = config['update_frequency']
 
-    def init(self, mode='ERK', density=0.05, ratio_G=0.5, erk_power_scale=1.0):
+    def init(self, mode='ERK', density=0.05, densityG=0.5, erk_power_scale=1.0):
         # calculating density for G and D3
         # some problems of defining sparsity ratio
         G_total_params = 0
@@ -113,13 +115,14 @@ class Masking(object):
 
         total_params = G_total_params + D_total_params
 
-        self.G_density = (ratio_G * density * total_params) / G_total_params
-        # what if G_density = 1.0?
-        if self.G_density >= 1.0:
-            self.G_density = 1.0
-            self.D_density = (density * total_params - G_total_params) / D_total_params
+        if self.balance:
+            self.G_density = density
+            self.D_density = density
         else:
+            self.G_density = densityG
             self.D_density = (total_params * density - G_total_params * self.G_density) / D_total_params
+            if self.D_density <= 0:
+                raise Exception('The density of Discriminator is smaller than 0')
 
 
         if mode == 'uniform':
@@ -178,7 +181,7 @@ class Masking(object):
                 self.print_nonzero_counts(dy_mode=self.dy_mode)
                 self.fired_masks_update()
 
-    def add_module(self, G_model, D_model, ratio_G=0.5 , density=0.5, sparse_init='ERK'):
+    def add_module(self, G_model, D_model, densityG=0.5 , density=0.5, sparse_init='ERK'):
         self.G_model = G_model
         self.D_model = D_model
 
@@ -198,7 +201,7 @@ class Masking(object):
         self.remove_weight_partial_name('gain')
         print('Removing D.embed...')
         self.remove_weight_partial_name('D.embed')
-        self.init(mode=sparse_init, density=density, ratio_G=ratio_G)
+        self.init(mode=sparse_init, density=density, densityG=densityG)
 
 
     def remove_weight(self, name):
