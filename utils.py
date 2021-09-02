@@ -1000,7 +1000,7 @@ def name_from_config(config):
   'sparse' if config['sparse'] else None,
   'sema' if config['sema'] else None,
   'imbalanced' if config['imbalanced'] else 'balanced',
-  'density%1.4f' % config['density'] if config['sparse'] else None,
+  'densityD%1.4f' % config['densityD'] if config['sparse'] else None,
   'densityG_%1.4f' % config['densityG'] if config['sparse'] else None,
   'dy_%s' % config['dy_mode'] if config['dy_mode'] else None,
   'D_growth_%s' % config['D_growth'] if config['dy_mode'] else None,
