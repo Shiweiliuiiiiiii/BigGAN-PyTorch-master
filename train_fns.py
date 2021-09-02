@@ -89,7 +89,7 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
 
     # If we have an ema, update it, regardless of if we test with it or not
     if config['ema']:
-      ema.update(state_dict['itr'])
+      ema.update(state_dict['itr'], mask, config)
     
     out = {'G_loss': float(G_loss.item()), 
             'D_loss_real': float(D_loss_real.item()),

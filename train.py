@@ -139,9 +139,9 @@ def run(config):
   # sparsify GAN models
   mask = None
   if config['sparse']:
-    decay = CosineDecay(config['death_rate'], len(loaders) * (config['num_epochs']))
+    decay = CosineDecay(config['death_rate'], len(loaders[0]) * (config['num_epochs']))
     mask = Masking(G.optim, D.optim, death_rate_decay=decay, **config)
-    mask.add_module(G, D, ratio_G=config['ratio_G'] , density=config['density'] , sparse_init=config['sparse_init'] )
+    mask.add_module(G, D, densityG=config['densityG'] , density=config['density'] , sparse_init=config['sparse_init'] )
 
 
   # Prepare inception metrics: FID and IS
