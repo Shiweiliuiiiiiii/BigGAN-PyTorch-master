@@ -9,7 +9,8 @@ import numpy as np
 import math
 
 def add_sparse_args(parser):
-    parser.add_argument('--sparse', action='store_true', help='Enable sparse mode. Default: True.')
+    parser.add_argument('--sparse', action='store_true', help='Enable sparse mode. Default: False.')
+    parser.add_argument('--sema', action='store_true', help='Enable sparse ema. Default: False.')
     parser.add_argument('--dy_mode', type=str, default='', help='dynamic change the sparse connectivity of which model')
     parser.add_argument('--sparse_init', type=str, default='ERK', help='sparse initialization')
     parser.add_argument('--G_growth', type=str, default='gradient', help='Growth mode for G. Choose from: momentum, random, random_unfired, and gradient.')
@@ -21,7 +22,9 @@ def add_sparse_args(parser):
     parser.add_argument('--update_frequency', type=int, default=2000, metavar='N', help='how many iterations to train between parameter exploration')
     parser.add_argument('--decay_schedule', type=str, default='cosine', help='The decay schedule for the pruning rate. Default: cosine. Choose from: cosine, linear.')
     parser.add_argument('--densityG', type=float, default=0.05, help='The density ratio of G.')
-    parser.add_argument('--balanced', action='store_true', help='Enable balanced training mode. Default: True.')
+    parser.add_argument('--densityD', type=float, default=0.05, help='The density ratio of D.')
+    parser.add_argument('--imbalanced', action='store_true', help='Enable imbalanced training mode. Default: False.')
+    parser.add_argument('--pruning_mode', type=str, default='', help='pruning mode: uniform_G, uniform_GD, global_G and global_GD')
     parser.add_argument('--pruning_rate', type=float, default=None, help='Pruning rate')
 
 def get_model_params(model):
@@ -86,7 +89,10 @@ class Masking(object):
         self.G_optimizer = G_optimizer
         self.D_optimizer = D_optimizer
         self.dy_mode = config['dy_mode']
-        self.balance = config['balanced']
+        self.imbalanced = config['imbalanced']
+        self.densityG = config['densityG']
+        self.densityD = config['densityD']
+
         # stats
         self.G_name2zeros = {}
         self.G_num_remove = {}
@@ -98,11 +104,12 @@ class Masking(object):
         self.steps = 0
 
 
+
         # if fix, we do not explore the sparse connectivity
         if not self.dy_mode: self.prune_every_k_steps = None
         else: self.prune_every_k_steps = config['update_frequency']
 
-    def init(self, mode='ERK', density=0.05, densityG=0.5, erk_power_scale=1.0):
+    def init(self, mode='ERK', density=0.05, densityG=0.5, erk_power_scale=1.0, customer_Gmasks=None, customer_Dmasks=None):
         # calculating density for G and D3
         # some problems of defining sparsity ratio
         G_total_params = 0
@@ -115,14 +122,12 @@ class Masking(object):
 
         total_params = G_total_params + D_total_params
 
-        if self.balance:
+        if not self.imbalanced:
             self.G_density = density
             self.D_density = density
         else:
-            self.G_density = densityG
-            self.D_density = (total_params * density - G_total_params * self.G_density) / D_total_params
-            if self.D_density <= 0:
-                raise Exception('The density of Discriminator is smaller than 0')
+            self.G_density = self.densityG
+            self.D_density = self.densityD
 
 
         if mode == 'uniform':
@@ -132,7 +137,9 @@ class Masking(object):
             for name, weight in self.D_model.named_parameters():
                 if name not in self.D_masks: continue
                 self.D_masks[name][:] = (torch.rand(weight.shape) < self.D_density).float().data.cuda()
-
+        elif mode == 'pruning':
+            self.G_masks = customer_Gmasks
+            self.D_masks = customer_Dmasks
         elif mode == 'ERK':
             print('initialize by ERK')
             self.ERK_initialize_G(erk_power_scale)
@@ -181,86 +188,20 @@ class Masking(object):
                 self.print_nonzero_counts(dy_mode=self.dy_mode)
                 self.fired_masks_update()
 
-    def add_module(self, G_model, D_model, densityG=0.5 , density=0.5, sparse_init='ERK'):
+    def add_module(self, G_model, D_model, densityG=0.5 , density=0.5, sparse_init='ERK', customer_Gmasks=None, customer_Dmasks=None):
         self.G_model = G_model
         self.D_model = D_model
 
         for name, tensor in self.G_model.named_parameters():
-            self.G_names.append(name)
-            self.G_masks[name] = torch.zeros_like(tensor,  requires_grad=False).cuda()
+            if len(tensor.size()) == 4:
+                self.G_masks[name] = torch.zeros_like(tensor,  requires_grad=False).cuda()
 
         for name, tensor in self.D_model.named_parameters():
-            self.D_names.append(name)
-            self.D_masks[name] = torch.zeros_like(tensor,  requires_grad=False).cuda()
+            if len(tensor.size()) == 4:
+                self.D_masks[name] = torch.zeros_like(tensor,  requires_grad=False).cuda()
 
-        print('Removing linear layer ...')
-        self.remove_weight_partial_name('linear')
-        print('Removing biases...')
-        self.remove_weight_partial_name('bias')
-        print('Removing gain...')
-        self.remove_weight_partial_name('gain')
-        print('Removing D.embed...')
-        self.remove_weight_partial_name('D.embed')
-        self.init(mode=sparse_init, density=density, densityG=densityG)
+        self.init(mode=sparse_init, density=density, densityG=densityG, customer_Gmasks=customer_Gmasks, customer_Dmasks=customer_Dmasks)
 
-
-    def remove_weight(self, name):
-        if name in self.masks:
-            print('Removing {0} of size {1} = {2} parameters.'.format(name, self.masks[name].shape,
-                                                                      self.masks[name].numel()))
-            self.masks.pop(name)
-        elif name + '.weight' in self.masks:
-            print('Removing {0} of size {1} = {2} parameters.'.format(name, self.masks[name + '.weight'].shape,
-                                                                      self.masks[name + '.weight'].numel()))
-            self.masks.pop(name + '.weight')
-        else:
-            print('ERROR', name)
-
-    def remove_weight_partial_name(self, partial_name):
-        # removing G
-        removed = set()
-        for name in list(self.G_masks.keys()):
-            if partial_name in name:
-
-                print('Removing {0} of size {1} with {2} parameters...'.format(name, self.G_masks[name].shape,
-                                                                                   np.prod(self.G_masks[name].shape)))
-                removed.add(name)
-                self.G_masks.pop(name)
-
-        print('Removed {0} layers from Gegenerator.'.format(len(removed)))
-
-        i = 0
-        while i < len(self.G_names):
-            name = self.G_names[i]
-            if name in removed:
-                self.G_names.pop(i)
-            else:
-                i += 1
-
-        # removing D
-        removed = set()
-        for name in list(self.D_masks.keys()):
-            if partial_name in name:
-                print('Removing {0} of size {1} with {2} parameters...'.format(name, self.D_masks[name].shape,
-                                                                               np.prod(self.D_masks[name].shape)))
-                removed.add(name)
-                self.D_masks.pop(name)
-
-        print('Removed {0} layers from Discriminator.'.format(len(removed)))
-
-        i = 0
-        while i < len(self.D_names):
-            name = self.D_names[i]
-            if name in removed:
-                self.D_names.pop(i)
-            else:
-                i += 1
-
-    def remove_type(self, nn_type):
-        for module in self.modules:
-            for name, module in module.named_modules():
-                if isinstance(module, nn_type):
-                    self.remove_weight(name)
 
     def apply_mask(self, apply_mode='GD'):
         if 'G' in apply_mode:

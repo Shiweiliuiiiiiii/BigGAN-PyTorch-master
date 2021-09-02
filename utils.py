@@ -632,7 +632,7 @@ class ema(object):
         self.target_dict[key].data.copy_(self.source_dict[key].data)
         # target_dict[key].data = source_dict[key].data # Doesn't work!
 
-  def update(self, itr=None):
+  def update(self, itr=None, mask=None, config=None):
     # If an iteration counter is provided and itr is less than the start itr,
     # peg the ema weights to the underlying weights.
     if itr and itr < self.start_itr:
@@ -641,9 +641,25 @@ class ema(object):
       decay = self.decay
     with torch.no_grad():
       for key in self.source_dict:
-        self.target_dict[key].data.copy_(self.target_dict[key].data * decay 
-                                     + self.source_dict[key].data * (1 - decay))
-
+        if config['sema']:
+          if key in mask.G_masks:
+            new_weighs_diff = (((self.target_dict[key].data!=0).byte() ^ mask.G_masks[key].data.byte()) & mask.G_masks[key].data.byte())
+            self.target_dict[key].data.copy_(
+                                            (self.target_dict[key].data * decay + self.source_dict[key].data * (1 - decay)).mul_(
+                                            mask.G_masks[key]).add_(new_weighs_diff * decay * self.source_dict[key].data)
+                                             )
+          else:
+            self.target_dict[key].data.copy_(self.target_dict[key].data * decay
+                                         + self.source_dict[key].data * (1 - decay))
+        else:
+          if key in mask.G_masks:
+            self.target_dict[key].data.copy_(
+                                            (self.target_dict[key].data * decay + self.source_dict[key].data * (1 - decay)).mul_(
+                                            mask.G_masks[key])
+                                             )
+          else:
+            self.target_dict[key].data.copy_(self.target_dict[key].data * decay
+                                             + self.source_dict[key].data * (1 - decay))
 
 # Apply modified ortho reg to a model
 # This function is an optimized version that directly computes the gradient,
@@ -982,9 +998,11 @@ def name_from_config(config):
   name = '_'.join([
   item for item in [
   'sparse' if config['sparse'] else None,
-  'balanced' if config['balanced'] else 'unbalanced',
-  'density%1.4f' % config['density'] if config['sparse'] else None,
-  'densityG_%1.4f' % config['densityG'] if config['sparse'] else None,
+  'sema' if config['sema'] else None,
+  'imbalanced' if config['imbalanced'] else 'balanced',
+  'density_%1.4f' % config['density'] if not config['imbalanced'] else None,
+  'densityD_%1.4f' % config['densityD'] if config['imbalanced'] else None,
+  'densityG_%1.4f' % config['densityG'] if config['imbalanced'] else None,
   'dy_%s' % config['dy_mode'] if config['dy_mode'] else None,
   'D_growth_%s' % config['D_growth'] if config['dy_mode'] else None,
   'G_growth_%s' % config['G_growth'] if config['dy_mode'] else None,

@@ -19,6 +19,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.nn import Parameter as P
 import torchvision
+from tensorboardX import SummaryWriter
 
 # Import my stuff
 import inception_utils
@@ -106,6 +107,12 @@ def run(config):
                        config['load_weights'] if config['load_weights'] else None,
                        G_ema if config['ema'] else None)
 
+  # Prepare tensorboard writer
+  writer = SummaryWriter(os.path.join(config['logs_root'], experiment_name))
+  global_steps = state_dict['itr']
+  writer_dict = {'writer': writer,
+                 'global_steps': global_steps}  
+
   # If parallel, parallelize the GD module
   if config['parallel']:
     GD = nn.DataParallel(GD)
@@ -161,7 +168,7 @@ def run(config):
   # Loaders are loaded, prepare the training function
   if config['which_train_fn'] == 'GAN':
     train = train_fns.GAN_training_function(mask, G, D, GD, z_, y_,
-                                            ema, state_dict, config)
+                                            ema, state_dict, config, writer_dict)
   # Else, assume debugging and use the dummy train fn
   else:
     train = train_fns.dummy_training_function()
