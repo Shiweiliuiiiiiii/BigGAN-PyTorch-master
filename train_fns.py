@@ -17,7 +17,7 @@ def dummy_training_function():
   return train
 
 
-def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
+def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config, writer_dict):
   def train(x, y):
     G.optim.zero_grad()
     D.optim.zero_grad()
@@ -25,7 +25,11 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
     x = torch.split(x, config['batch_size'])
     y = torch.split(y, config['batch_size'])
     counter = 0
-    
+   
+    # Get writer
+    writer = writer_dict['writer']
+    global_steps = writer_dict['global_steps']
+ 
     # Optionally toggle D and G's "require_grad"
     if config['toggle_grads']:
       utils.toggle_grad(D, True)
@@ -58,6 +62,13 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
           mask.step(explore_mode='D')
       else:
           D.optim.step()
+
+    # Update tensorboard
+    summary = {'D_loss_real': torch.mean(D_loss_real),
+               'D_loss_fake': torch.mean(D_loss_fake),
+               'real_scores': torch.mean(D_real),
+               'fake_scores': torch.mean(D_fake)}
+    writer.add_scalars('D', summary, global_steps)
     
     # Optionally toggle "requires_grad"
     if config['toggle_grads']:
@@ -74,7 +85,12 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
       D_fake = GD(z_, y_, train_G=True, split_D=config['split_D'])
       G_loss = losses.generator_loss(D_fake) / float(config['num_G_accumulations'])
       G_loss.backward()
+    # Update tensorboard
+    summary = {'G_loss': torch.mean(G_loss),
+               'fake_scores': torch.mean(D_fake)}
+    writer.add_scalars('G', summary, global_steps)  
     
+ 
     # Optionally apply modified ortho reg in G
     if config['G_ortho'] > 0.0:
       print('using modified ortho reg in G') # Debug print to indicate we're using ortho reg in G
@@ -86,6 +102,11 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config):
         mask.step(explore_mode='G')
     else:
         G.optim.step()
+
+    # Update writer_dict
+    global_steps += 1
+    writer_dict['writer'] = writer
+    writer_dict['global_steps'] = global_steps
 
     # If we have an ema, update it, regardless of if we test with it or not
     if config['ema']:
