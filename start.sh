@@ -4,7 +4,7 @@ for densityG in 0.05 0.1 0.2 0.3 0.4
 do
   python3.6 train_compression.py \
   --dataset I128_hdf5 --parallel --shuffle  --num_workers 8 --batch_size 256 --load_in_mem  \
-  --sparse --dy_mode GD --densityG $densityG --densityD $densityD --G_growth gradient --D_growth random --update_frequency 2000 \
+  --sparse --sema --dy_mode GD --densityG $densityG --densityD $densityD --G_growth gradient --D_growth random --update_frequency 2000 \
   --num_G_accumulations 8 --num_D_accumulations 8 \
   --num_D_steps 1 --G_lr 1e-4 --D_lr 4e-4 --D_B1 0.0 --D_B2 0.999 --G_B2 0.999 \
   --G_attn 64 --D_attn 64 \
