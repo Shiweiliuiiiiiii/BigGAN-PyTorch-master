@@ -44,7 +44,7 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config, write
         D_fake, D_real = GD(z_[:config['batch_size']], y_[:config['batch_size']], 
                             x[counter], y[counter], train_G=False, 
                             split_D=config['split_D'])
-         
+
         # Compute components of D's loss, average them, and divide by 
         # the number of gradient accumulations
         D_loss_real, D_loss_fake = losses.discriminator_loss(D_fake, D_real)
@@ -68,6 +68,7 @@ def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config, write
                'D_loss_fake': torch.mean(D_loss_fake),
                'real_scores': torch.mean(D_real),
                'fake_scores': torch.mean(D_fake)}
+
     writer.add_scalars('D', summary, global_steps)
     
     # Optionally toggle "requires_grad"

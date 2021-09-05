@@ -146,7 +146,7 @@ def run(config):
   # sparsify GAN models
   mask = None
   if config['sparse']:
-    decay = CosineDecay(config['death_rate'], len(loaders[0]) * (config['num_epochs']))
+    decay = CosineDecay(config['death_rate'], int(len(loaders[0]) * (config['num_epochs']) * config['multiplier']))
     mask = Masking(G.optim, D.optim, death_rate_decay=decay, **config)
     mask.add_module(G, D, densityG=config['densityG'] , density=config['density'] , sparse_init=config['sparse_init'] )
 
@@ -180,7 +180,7 @@ def run(config):
 
   print('Beginning training at epoch %d...' % state_dict['epoch'])
   # Train for specified number of epochs, although we mostly track G iterations.
-  for epoch in range(state_dict['epoch'], config['num_epochs']):    
+  for epoch in range(state_dict['epoch'], config['num_epochs'] * config['multiplier']):
     # Which progressbar to use? TQDM or my own?
     if config['pbar'] == 'mine':
       pbar = utils.progress(loaders[0],displaytype='s1k' if config['use_multiepoch_sampler'] else 'eta')

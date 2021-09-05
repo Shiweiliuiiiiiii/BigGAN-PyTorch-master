@@ -26,6 +26,7 @@ def add_sparse_args(parser):
     parser.add_argument('--imbalanced', action='store_true', help='Enable imbalanced training mode. Default: False.')
     parser.add_argument('--pruning_mode', type=str, default='', help='pruning mode: uniform_G, uniform_GD, global_G and global_GD')
     parser.add_argument('--pruning_rate', type=float, default=None, help='Pruning rate')
+    parser.add_argument('--multiplier', type=int, default=1, help='multiplier for extended training')
 
 def get_model_params(model):
     params = {}
