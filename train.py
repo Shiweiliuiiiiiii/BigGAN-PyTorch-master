@@ -146,10 +146,12 @@ def run(config):
   # sparsify GAN models
   mask = None
   if config['sparse']:
-    decay = CosineDecay(config['death_rate'], int(len(loaders[0]) * (config['num_epochs']) * config['multiplier']), last_epoch=(state_dict['itr']-1))
+    decay = CosineDecay(config['death_rate'], int(len(loaders[0]) * (config['num_epochs']) * config['multiplier']))
     mask = Masking(G.optim, D.optim, death_rate_decay=decay, **config)
     mask.add_module(G, D, densityG=config['densityG'] , density=config['density'] , sparse_init=config['sparse_init'] )
 
+    if config['resume']:
+      decay.cosine_stepper.last_epoch = state_dict['itr']
 
   # Prepare inception metrics: FID and IS
   get_inception_metrics = inception_utils.prepare_inception_metrics(config['dataset'], config['parallel'], config['no_fid'])
