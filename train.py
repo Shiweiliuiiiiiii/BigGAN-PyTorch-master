@@ -146,7 +146,7 @@ def run(config):
   # sparsify GAN models
   mask = None
   if config['sparse']:
-    decay = CosineDecay(config['death_rate'], int(len(loaders[0]) * (config['num_epochs']) * config['multiplier']))
+    decay = CosineDecay(config['death_rate'], int(len(loaders[0]) * (config['num_epochs']) * config['multiplier']), last_epoch=(state_dict['itr']-1))
     mask = Masking(G.optim, D.optim, death_rate_decay=decay, **config)
     mask.add_module(G, D, densityG=config['densityG'] , density=config['density'] , sparse_init=config['sparse_init'] )
 

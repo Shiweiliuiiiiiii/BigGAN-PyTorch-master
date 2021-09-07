@@ -141,6 +141,13 @@ class Masking(object):
         elif mode == 'pruning':
             self.G_masks = customer_Gmasks
             self.D_masks = customer_Dmasks
+        elif mode == 'resume':
+            for name, weight in self.G_model.named_parameters():
+                if name not in self.G_masks: continue
+                self.G_masks[name][:] = (weight != 0.0).float().data.cuda()
+            for name, weight in self.D_model.named_parameters():
+                if name not in self.D_masks: continue
+                self.D_masks[name][:] = (weight != 0.0).float().data.cuda()
         elif mode == 'ERK':
             print('initialize by ERK')
             self.ERK_initialize_G(erk_power_scale)
