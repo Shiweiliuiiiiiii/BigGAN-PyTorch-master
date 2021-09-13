@@ -1,5 +1,5 @@
 #!/bin/bash
-densityD=0.5
+densityD=1.0
 for densityG in 0.05 0.1 0.2 0.3 0.4
 do
   python3.6 train_compression.py \
