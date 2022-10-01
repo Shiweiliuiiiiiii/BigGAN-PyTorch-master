@@ -43,6 +43,7 @@ def set_model_params(model, model_parameters):
 
 class CosineDecay(object):
     def __init__(self, death_rate, T_max, eta_min=0.005, last_epoch=-1):
+        self.T_max = T_max
         self.sgd = optim.SGD(torch.nn.ParameterList([torch.nn.Parameter(torch.zeros(1))]), lr=death_rate)
         self.cosine_stepper = torch.optim.lr_scheduler.CosineAnnealingLR(self.sgd, T_max, eta_min, last_epoch)
 
