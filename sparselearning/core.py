@@ -98,6 +98,7 @@ class Masking(object):
         self.imbalanced = config['imbalanced']
         self.densityG = config['densityG']
         self.densityD = config['densityD']
+        self.sparse_mode = config['sparse_mode']
 
         # stats
         self.G_name2zeros = {}
