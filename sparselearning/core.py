@@ -703,6 +703,6 @@ class Masking(object):
 
         for name, tensor in self.G_model.named_parameters():
             if name not in self.G_masks: continue
-            self.masks[name] = ((torch.abs(tensor)) > acceptable_score).float().data.cuda()
+            self.G_masks[name] = ((torch.abs(tensor)) > acceptable_score).float().data.cuda()
         self.apply_mask(apply_mode='G')
 
