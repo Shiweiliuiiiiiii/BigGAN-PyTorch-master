@@ -14,8 +14,8 @@ for densityG in 0.05 0.1 0.2
 do
   python train.py \
   --shuffle --batch_size 50 --parallel \
-  --sparse --sema --dy_mode G --imbalanced --density 0.5 --densityG $densityG --G_growth gradient --D_growth random --update_frequency 100 \
-  --num_G_accumulations 1 --num_D_accumulations 1 --num_epochs 500  --sparse_mode GMP --sparse_init dense\
+  --sparse --sema --dy_mode G --imbalanced --densityD 1.0 --densityG $densityG --G_growth gradient --D_growth random --update_frequency 100 \
+  --num_G_accumulations 1 --num_D_accumulations 1 --num_epochs 500  --sparse_mode GMP --sparse_init dense --initial_prune_time 0.0 \
   --num_D_steps 4 --G_lr 2e-4 --D_lr 2e-4 \
   --dataset C10 \
   --G_ortho 0.0 \
