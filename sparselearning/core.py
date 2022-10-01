@@ -110,8 +110,8 @@ class Masking(object):
         self.steps = 0
         if self.death_rate_decay.T_max:
             self.total_step = self.death_rate_decay.T_max
-        self.final_prune_time = int(self.total_step * args.final_prune_time)
-        self.initial_prune_time = int(self.total_step * args.initial_prune_time)
+        self.final_prune_time = int(self.total_step * config[final_prune_time])
+        self.initial_prune_time = int(self.total_step * config[initial_prune_time])
 
 
 
