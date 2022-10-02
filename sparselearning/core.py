@@ -148,7 +148,7 @@ class Masking(object):
             for name, weight in self.D_model.named_parameters():
                 if name not in self.D_masks: continue
                 self.D_masks[name][:] = (torch.rand(weight.shape) < self.D_density).float().data.cuda()
-        elif mode == 'dense':
+        elif mode == 'dense' or mode == 'snip':
             print('initialized with dense model')
             for name, weight in self.G_model.named_parameters():
                 if name not in self.G_masks: continue
