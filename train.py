@@ -192,7 +192,7 @@ def run(config):
     else:
       pbar = tqdm(loaders[0])
     for i, (x, y) in enumerate(pbar):
-      if epoch == 0 and i == 0 and mask.sparse_init == 'snip':
+      if epoch == 0 and i == 0 and config['sparse_init'] == 'snip':
         # perform snip before training
         G.train()
         D.train()
