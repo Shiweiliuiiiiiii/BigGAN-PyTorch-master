@@ -998,6 +998,7 @@ def name_from_config(config):
   name = '_'.join([
   item for item in [
   'sparse' if config['sparse'] else 'dense',
+  '%s' % config['sparse_mode'],
   '%dx' % config['multiplier'] if config['multiplier']!=1 else None,
   'sema' if config['sema'] else None,
   'imbalanced' if config['imbalanced'] else 'balanced',

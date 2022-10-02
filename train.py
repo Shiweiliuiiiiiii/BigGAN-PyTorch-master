@@ -171,6 +171,9 @@ def run(config):
   if config['which_train_fn'] == 'GAN':
     train = train_fns.GAN_training_function(mask, G, D, GD, z_, y_,
                                             ema, state_dict, config, writer_dict)
+
+    snip = train_fns.snip_mask(mask, G, D, GD, z_, y_, ema, state_dict, config, writer_dict)
+
   # Else, assume debugging and use the dummy train fn
   else:
     train = train_fns.dummy_training_function()
@@ -189,6 +192,13 @@ def run(config):
     else:
       pbar = tqdm(loaders[0])
     for i, (x, y) in enumerate(pbar):
+      if i == 0:
+        # perform snip before training
+        G.train()
+        D.train()
+        snip(x, y)
+        mask.print_status()
+
       # Increment the iteration counter
       state_dict['itr'] += 1
       # Make sure G and D are in training mode, just in case they got set to eval

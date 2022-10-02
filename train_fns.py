@@ -17,6 +17,132 @@ def dummy_training_function():
   return train
 
 
+def snip_mask(mask, G, D, GD, z_, y_, ema, state_dict, config, writer_dict):
+    def snip(x, y):
+        G.optim.zero_grad()
+        D.optim.zero_grad()
+        # How many chunks to split x and y into?
+        x = torch.split(x, config['batch_size'])
+        y = torch.split(y, config['batch_size'])
+        counter = 0
+
+        # # Get writer
+        # writer = writer_dict['writer']
+        # global_steps = writer_dict['global_steps']
+
+        # Optionally toggle D and G's "require_grad"
+        if config['toggle_grads']:
+            utils.toggle_grad(D, True)
+            utils.toggle_grad(G, False)
+
+        for step_index in range(config['num_D_steps']):
+            # If accumulating gradients, loop multiple times before an optimizer step
+            D.optim.zero_grad()
+            for accumulation_index in range(config['num_D_accumulations']):
+                z_.sample_()
+                y_.sample_()
+                D_fake, D_real = GD(z_[:config['batch_size']], y_[:config['batch_size']],
+                                    x[counter], y[counter], train_G=False,
+                                    split_D=config['split_D'])
+
+                # Compute components of D's loss, average them, and divide by
+                # the number of gradient accumulations
+                D_loss_real, D_loss_fake = losses.discriminator_loss(D_fake, D_real)
+                D_loss = (D_loss_real + D_loss_fake) / float(config['num_D_accumulations'])
+                D_loss.backward()
+                counter += 1
+
+            # Optionally apply ortho reg in D
+            if config['D_ortho'] > 0.0:
+                # Debug print to indicate we're using ortho reg in D.
+                print('using modified ortho reg in D')
+                utils.ortho(D, config['D_ortho'])
+
+            # if config['sparse']:
+            #     mask.step(explore_mode='D')
+            # else:
+            #     D.optim.step()
+
+        # Update tensorboard
+        summary = {'D_loss_real': torch.mean(D_loss_real),
+                   'D_loss_fake': torch.mean(D_loss_fake),
+                   'real_scores': torch.mean(D_real),
+                   'fake_scores': torch.mean(D_fake)}
+
+
+        # Optionally toggle "requires_grad"
+        if config['toggle_grads']:
+            utils.toggle_grad(D, False)
+            utils.toggle_grad(G, True)
+
+        # Zero G's gradients by default before training G, for safety
+        G.optim.zero_grad()
+
+        # If accumulating gradients, loop multiple times
+        for accumulation_index in range(config['num_G_accumulations']):
+            z_.sample_()
+            y_.sample_()
+            D_fake = GD(z_, y_, train_G=True, split_D=config['split_D'])
+            G_loss = losses.generator_loss(D_fake) / float(config['num_G_accumulations'])
+            G_loss.backward()
+        # Update tensorboard
+        summary = {'G_loss': torch.mean(G_loss),
+                   'fake_scores': torch.mean(D_fake)}
+        # writer.add_scalars('G', summary, global_steps)
+
+        # Optionally apply modified ortho reg in G
+        if config['G_ortho'] > 0.0:
+            print('using modified ortho reg in G')  # Debug print to indicate we're using ortho reg in G
+            # Don't ortho reg shared, it makes no sense. Really we should blacklist any embeddings for this
+            utils.ortho(G, config['G_ortho'],
+                        blacklist=[param for param in G.shared.parameters()])
+
+        # calculate pruning score for D
+        grads_abs_D = []
+        for name, weight in D.named_parameters():
+            if name not in mask.D_masks: continue
+            grads_abs_D.append(torch.abs(weight * weight.grad))
+
+        all_scores_D = torch.cat([torch.flatten(x) for x in grads_abs_D])
+
+        num_params_to_keep_D = int(len(all_scores_D) * (1 - mask.densityD))
+        threshold_D, _ = torch.topk(all_scores_D, num_params_to_keep_D + 1, sorted=True)
+        acceptable_score_D = threshold_D[-1]
+
+        snip_masks_D = []
+        for i, g in enumerate(grads_abs_D):
+            mask_ = (g > acceptable_score_D).float()
+            snip_masks_D.append(mask_)
+
+
+        grads_abs_G = []
+        for name, weight in G.named_parameters():
+            if name not in mask.G_masks: continue
+            grads_abs_G.append(torch.abs(weight * weight.grad))
+
+        # calculate pruning score for G
+        all_scores_G = torch.cat([torch.flatten(x) for x in grads_abs_G])
+
+        num_params_to_keep_G = int(len(all_scores_G) * (1 - mask.densityG))
+        threshold_G, _ = torch.topk(all_scores_G, num_params_to_keep_G + 1, sorted=True)
+        acceptable_score_G = threshold_G[-1]
+
+        snip_masks_G = []
+        for i, g in enumerate(grads_abs_G):
+            mask_ = (g > acceptable_score_G).float()
+            snip_masks_G.append(mask_)
+
+
+        for snip_mask, name in zip(snip_masks_D, mask.D_masks):
+            mask.D_masks[name] = snip_mask
+
+        for snip_mask, name in zip(snip_masks_G, mask.G_masks):
+            mask.G_masks[name] = snip_mask
+
+        mask.apply_mask(apply_mode='GD')
+
+    return snip
+
 def GAN_training_function(mask, G, D, GD, z_, y_, ema, state_dict, config, writer_dict):
   def train(x, y):
     G.optim.zero_grad()
