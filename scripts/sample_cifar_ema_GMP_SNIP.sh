@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --gpus=1
-#SBATCH -t 0-02:00:00
+#SBATCH -t 0-10:00:00
 #SBATCH --cpus-per-task=18
 #SBATCH -o Biggan_GMP_SNIP.out        # 打印输出的文件
 source /home/sliu/miniconda3/etc/profile.d/conda.sh
