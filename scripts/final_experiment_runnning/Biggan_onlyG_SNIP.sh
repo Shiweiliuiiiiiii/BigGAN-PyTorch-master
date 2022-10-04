@@ -10,7 +10,7 @@
 #SBATCH -o Biggan_onlyG_SNIP.out        # 打印输出的文件
 source /home/sliu/miniconda3/etc/profile.d/conda.sh
 conda activate slak
-4
+
 for densityG in 0.05 0.1 0.2
 do
   python train.py \

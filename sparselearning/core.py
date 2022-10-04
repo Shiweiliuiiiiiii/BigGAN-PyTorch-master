@@ -114,8 +114,6 @@ class Masking(object):
         self.final_prune_time = int(self.total_step * config['final_prune_time'])
         self.initial_prune_time = int(self.total_step * config['initial_prune_time'])
 
-
-
         # if fix, we do not explore the sparse connectivity
         if not self.dy_mode: self.prune_every_k_steps = None
         else: self.prune_every_k_steps = config['update_frequency']

@@ -132,7 +132,6 @@ def snip_mask(mask, G, D, GD, z_, y_, ema, state_dict, config, writer_dict):
             mask_ = (g > acceptable_score_G).float()
             snip_masks_G.append(mask_)
 
-
         for snip_mask, name in zip(snip_masks_D, mask.D_masks):
             mask.D_masks[name] = snip_mask
 
