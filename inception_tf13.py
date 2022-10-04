@@ -21,7 +21,8 @@ from argparse import ArgumentParser
 
 import numpy as np
 from six.moves import urllib
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 config_tf = tf.ConfigProto()
 config_tf.gpu_options.allow_growth = True
